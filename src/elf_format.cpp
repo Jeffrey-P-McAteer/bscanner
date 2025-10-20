@@ -47,7 +47,15 @@ void ElfFormat::parse_elf64() {
     file.read(reinterpret_cast<char*>(&header), sizeof(header));
     
     entry_point_ = header.e_entry;
+    // For PIE executables, use the base address from the first LOAD segment
+    // For now, we'll use 0x400000 and adjust the entry point accordingly
     base_address_ = 0x400000;
+    
+    // If this is a PIE executable with entry point < base_address,
+    // adjust the entry point to be relative to the base address
+    if (header.e_type == ET_DYN && entry_point_ < base_address_) {
+        entry_point_ += base_address_;
+    }
 }
 
 uint64_t ElfFormat::get_entry_point() const {

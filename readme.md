@@ -30,6 +30,15 @@ platform agnostic, but cross-compilation is out of scope for the tool.
 uv run build.py
 ```
 
+To build and run an example program from `./example-programs/` you can use the following helper script
+
+```bash
+uv run build-and-run-example.py EXAMPLE_NAME EXAMPLE_BIN_ARG1 EXAMPLE_BIN_ARG2
+
+# For example
+uv run build-and-run-example.py example1 /tmp/test.txt
+```
+
 # Usage
 
 ```bash

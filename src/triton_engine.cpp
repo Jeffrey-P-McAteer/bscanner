@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <iomanip>
 
 TritonEngine::TritonEngine(BinaryFormat* binary_format) 
     : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(0) {
@@ -54,6 +55,15 @@ void TritonEngine::load_binary() {
     file.read(reinterpret_cast<char*>(binary_data.data()), size);
     
     uint64_t base_addr = binary_format_->get_base_address();
+    uint64_t entry_point = binary_format_->get_entry_point();
+    
+    if (verbosity_level_ > 0) {
+        std::cerr << "[LOAD] Binary size: " << size << " bytes" << std::endl;
+        std::cerr << "[LOAD] Base address: 0x" << std::hex << base_addr << std::endl;
+        std::cerr << "[LOAD] Entry point: 0x" << std::hex << entry_point << std::endl;
+        std::cerr << "[LOAD] Loading binary at base address" << std::endl;
+    }
+    
     ctx_.setConcreteMemoryAreaValue(base_addr, binary_data);
     
     if (binary_format_->is_64bit()) {
@@ -117,9 +127,45 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             auto opcodes = ctx_.getConcreteMemoryAreaValue(pc, 16);
             instruction.setOpcode(opcodes.data(), opcodes.size());
             
+            // Add detailed debugging for instruction processing
+            if (verbosity_level_ > 1) {
+                std::cerr << "[DEBUG] Attempting to process instruction at PC: 0x" << std::hex << pc << std::endl;
+                std::cerr << "[DEBUG] Opcodes (" << std::dec << opcodes.size() << " bytes): ";
+                for (size_t i = 0; i < std::min(opcodes.size(), (size_t)8); ++i) {
+                    std::cerr << std::hex << std::setfill('0') << std::setw(2) << (unsigned)opcodes[i] << " ";
+                }
+                std::cerr << std::endl;
+                std::cerr << "[DEBUG] Instruction disassembly: " << instruction.getDisassembly() << std::endl;
+            }
+            
             if (!ctx_.processing(instruction)) {
-                std::cout << "Execution finished or invalid instruction at PC: 0x" << std::hex << pc 
-                          << " after " << std::dec << instruction_count << " instructions" << std::endl;
+                auto disasm = instruction.getDisassembly();
+                
+                // Check if this is an unsupported CET instruction we can skip
+                if (disasm.find("endbr64") != std::string::npos || disasm.find("endbr32") != std::string::npos) {
+                    if (verbosity_level_ > 1) {
+                        std::cerr << "[SKIP] Unsupported CET instruction: " << disasm << " at 0x" << std::hex << pc << std::endl;
+                    }
+                    // Skip this instruction by advancing PC manually
+                    uint64_t next_pc = pc + instruction.getSize();
+                    if (binary_format_->is_64bit()) {
+                        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RIP), next_pc);
+                    } else {
+                        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EIP), static_cast<uint32_t>(next_pc));
+                    }
+                    continue; // Continue to next instruction
+                }
+                
+                std::cerr << "INSTRUCTION PROCESSING FAILED at PC: 0x" << std::hex << pc << std::endl;
+                std::cerr << "Instruction bytes: ";
+                for (size_t i = 0; i < std::min(opcodes.size(), (size_t)8); ++i) {
+                    std::cerr << std::hex << std::setfill('0') << std::setw(2) << (unsigned)opcodes[i] << " ";
+                }
+                std::cerr << std::endl;
+                std::cerr << "Disassembly: " << disasm << std::endl;
+                std::cerr << "Size: " << std::dec << instruction.getSize() << " bytes" << std::endl;
+                std::cerr << "Type: " << instruction.getType() << std::endl;
+                std::cerr << "Execution finished or invalid instruction after " << instruction_count << " instructions" << std::endl;
                 break;
             }
             
