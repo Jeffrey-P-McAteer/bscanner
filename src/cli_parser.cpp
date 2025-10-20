@@ -28,6 +28,11 @@ AnalysisConfig CliParser::parse(int argc, char* argv[]) {
                 throw std::runtime_error("Missing value for timeout");
             }
             config.timeout_seconds = std::stoi(argv[++i]);
+        } else if (arg == "-m" || arg == "--max-instructions") {
+            if (i + 1 >= argc) {
+                throw std::runtime_error("Missing value for max instructions");
+            }
+            config.max_instructions = std::stoi(argv[++i]);
         } else if (arg == "--env") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("Missing value for environment variable");
@@ -70,12 +75,14 @@ void CliParser::print_help() const {
     std::cout << "  -vvv                    Debug verbose output (level 3, shows IOTracker calls)\n";
     std::cout << "  -o, --output FORMAT     Output format (json, xml, text) [default: json]\n";
     std::cout << "  -t, --timeout SECONDS   Analysis timeout in seconds [default: 60]\n";
+    std::cout << "  -m, --max-instructions N Maximum number of instructions to execute [default: 10000]\n";
     std::cout << "  --env KEY=VALUE         Set environment variable for target\n";
     std::cout << "  --args ARG1 ARG2 ...    Command line arguments for target\n\n";
     std::cout << "EXAMPLES:\n";
     std::cout << "  bscanner ./target_app\n";
     std::cout << "  bscanner --env PATH=/usr/bin --args -v --verbose ./target_app\n";
-    std::cout << "  bscanner -o xml -t 120 ./target_app\n";
+    std::cout << "  bscanner -o xml -t 120 -m 5000 ./target_app\n";
+    std::cout << "  bscanner -vvv --max-instructions 1000 ./target_app\n";
 }
 
 void CliParser::print_usage() const {

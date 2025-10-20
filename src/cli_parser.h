@@ -11,6 +11,7 @@ struct AnalysisConfig {
     int verbosity_level = 0;
     bool help_requested = false;
     int timeout_seconds = 60;
+    int max_instructions = 10000;
 };
 
 class CliParser {

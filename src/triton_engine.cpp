@@ -7,13 +7,13 @@
 #include <iomanip>
 
 TritonEngine::TritonEngine(BinaryFormat* binary_format) 
-    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(0) {
+    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(0), max_instructions_(10000) {
     setup_architecture();
     setup_callbacks();
 }
 
-TritonEngine::TritonEngine(BinaryFormat* binary_format, int verbosity_level) 
-    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(verbosity_level) {
+TritonEngine::TritonEngine(BinaryFormat* binary_format, int verbosity_level, int max_instructions) 
+    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(verbosity_level), max_instructions_(max_instructions) {
     setup_architecture();
     setup_callbacks();
 }
@@ -176,7 +176,13 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
                     
                     // Check for program termination instructions
                     if (disasm.find("hlt") != std::string::npos) {
-                        std::cout << "Program reached halt instruction - analysis complete" << std::endl;
+                        std::cout << "Program reached halt instruction - analysis complete after " << instruction_count << " instructions" << std::endl;
+                        break;
+                    }
+                    
+                    // Check for exit syscalls before simulating effects
+                    if (is_exit_syscall(instruction)) {
+                        std::cout << "Program exit syscall detected - analysis complete after " << instruction_count << " instructions" << std::endl;
                         break;
                     }
                     
@@ -191,6 +197,13 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
                         ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EIP), static_cast<uint32_t>(next_pc));
                     }
                     instruction_count++;
+                    
+                    // Check instruction limit in skipped path too
+                    if (instruction_count > max_instructions_) {
+                        std::cout << "Instruction limit reached after " << instruction_count << " instructions" << std::endl;
+                        break;
+                    }
+                    
                     continue; // Continue to next instruction
                 }
                 
@@ -212,8 +225,21 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             log_instruction(instruction, verbosity_level_);
             
             // Limit instruction count to prevent infinite loops
-            if (instruction_count > 10000) {
-                std::cout << "Instruction limit reached" << std::endl;
+            if (instruction_count > max_instructions_) {
+                std::cout << "Instruction limit reached after " << instruction_count << " instructions" << std::endl;
+                break;
+            }
+            
+            // Check for halt instructions in successfully processed instructions
+            auto disasm = instruction.getDisassembly();
+            if (disasm.find("hlt") != std::string::npos) {
+                std::cout << "Program reached halt instruction - analysis complete after " << instruction_count << " instructions" << std::endl;
+                break;
+            }
+            
+            // Check for exit syscalls in successfully processed instructions
+            if (is_exit_syscall(instruction)) {
+                std::cout << "Program exit syscall detected - analysis complete after " << instruction_count << " instructions" << std::endl;
                 break;
             }
             
@@ -248,6 +274,53 @@ void TritonEngine::check_syscall(const triton::arch::Instruction& instruction) {
             io_tracker_->track_syscall(eax_val, "int80_" + std::to_string(eax_val));
         }
     }
+}
+
+bool TritonEngine::is_exit_syscall(const triton::arch::Instruction& instruction) {
+    auto mnemonic = instruction.getDisassembly();
+    
+    if (binary_format_->is_64bit()) {
+        if (mnemonic.find("syscall") != std::string::npos) {
+            auto rax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RAX));
+            auto rax_val = static_cast<uint64_t>(rax);
+            
+            // Linux x86_64 exit syscalls
+            if (rax_val == 60 || rax_val == 231) { // exit (60) or exit_group (231)
+                if (verbosity_level_ > 1) {
+                    std::cerr << "[EXIT] Linux x86_64 exit syscall detected: " << rax_val << std::endl;
+                }
+                return true;
+            }
+        }
+    } else {
+        if (mnemonic.find("int") != std::string::npos && mnemonic.find("0x80") != std::string::npos) {
+            auto eax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EAX));
+            auto eax_val = static_cast<uint64_t>(eax);
+            
+            // Linux x86 exit syscalls
+            if (eax_val == 1 || eax_val == 252) { // exit (1) or exit_group (252)
+                if (verbosity_level_ > 1) {
+                    std::cerr << "[EXIT] Linux x86 exit syscall detected: " << eax_val << std::endl;
+                }
+                return true;
+            }
+        }
+        // Windows x86 syscalls (int 0x2e)
+        else if (mnemonic.find("int") != std::string::npos && mnemonic.find("0x2e") != std::string::npos) {
+            auto eax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EAX));
+            auto eax_val = static_cast<uint64_t>(eax);
+            
+            // Windows exit syscalls (approximate - Windows syscall numbers vary by version)
+            if (eax_val == 0x002C || eax_val == 0x0032) { // NtTerminateProcess variants
+                if (verbosity_level_ > 1) {
+                    std::cerr << "[EXIT] Windows x86 exit syscall detected: " << eax_val << std::endl;
+                }
+                return true;
+            }
+        }
+    }
+    
+    return false;
 }
 
 void TritonEngine::log_instruction(const triton::arch::Instruction& instruction, int verbosity_level) {

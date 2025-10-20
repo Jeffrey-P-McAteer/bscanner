@@ -48,7 +48,7 @@ void BinaryAnalyzer::detect_binary_format() {
 }
 
 void BinaryAnalyzer::setup_triton_engine() {
-    triton_engine_ = std::make_unique<TritonEngine>(binary_format_.get(), config_.verbosity_level);
+    triton_engine_ = std::make_unique<TritonEngine>(binary_format_.get(), config_.verbosity_level, config_.max_instructions);
 }
 
 void BinaryAnalyzer::run_analysis() {
