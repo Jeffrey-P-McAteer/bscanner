@@ -27,4 +27,5 @@ private:
     void setup_architecture();
     void setup_callbacks();
     void memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem);
+    void check_syscall(const triton::arch::Instruction& instruction);
 };

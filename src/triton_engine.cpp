@@ -79,7 +79,18 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
     auto start_time = std::chrono::steady_clock::now();
     auto timeout = std::chrono::seconds(timeout_seconds);
     
+    // Track CLI arguments and environment variables
+    if (io_tracker_) {
+        for (const auto& arg : args_) {
+            io_tracker_->track_cli_argument(arg);
+        }
+        for (const auto& env : env_vars_) {
+            io_tracker_->track_environment_variable(env.first, env.second);
+        }
+    }
+    
     try {
+        int instruction_count = 0;
         while (true) {
             auto current_time = std::chrono::steady_clock::now();
             if (current_time - start_time > timeout) {
@@ -101,7 +112,17 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             instruction.setOpcode(opcodes.data(), opcodes.size());
             
             if (!ctx_.processing(instruction)) {
-                std::cout << "Execution finished or invalid instruction" << std::endl;
+                std::cout << "Execution finished or invalid instruction at PC: 0x" << std::hex << pc 
+                          << " after " << std::dec << instruction_count << " instructions" << std::endl;
+                break;
+            }
+            
+            instruction_count++;
+            check_syscall(instruction);
+            
+            // Limit instruction count to prevent infinite loops
+            if (instruction_count > 10000) {
+                std::cout << "Instruction limit reached" << std::endl;
                 break;
             }
             
@@ -115,5 +136,25 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
 void TritonEngine::memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem) {
     if (io_tracker_) {
         io_tracker_->track_memory_access(mem.getAddress(), mem.getSize(), mem.getType());
+    }
+}
+
+void TritonEngine::check_syscall(const triton::arch::Instruction& instruction) {
+    if (!io_tracker_) return;
+    
+    auto mnemonic = instruction.getDisassembly();
+    
+    if (binary_format_->is_64bit()) {
+        if (mnemonic.find("syscall") != std::string::npos) {
+            auto rax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RAX));
+            auto rax_val = static_cast<uint64_t>(rax);
+            io_tracker_->track_syscall(rax_val, "syscall_" + std::to_string(rax_val));
+        }
+    } else {
+        if (mnemonic.find("int") != std::string::npos && mnemonic.find("0x80") != std::string::npos) {
+            auto eax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EAX));
+            auto eax_val = static_cast<uint64_t>(eax);
+            io_tracker_->track_syscall(eax_val, "int80_" + std::to_string(eax_val));
+        }
     }
 }
