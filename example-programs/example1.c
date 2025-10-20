@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv) {
 
-  if (argc < 1) {
+  if (argc < 2) {
     printf("Usage: example1 FILE.txt\n");
     return 1;
   }
