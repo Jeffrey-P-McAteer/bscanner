@@ -6,9 +6,6 @@ import sys
 import subprocess
 import platform
 import shutil
-import urllib.request
-import tarfile
-import zipfile
 import argparse
 from pathlib import Path
 
@@ -17,12 +14,7 @@ BUILD_DIR = REPO_DIR / "build"
 TRITON_DIR = BUILD_DIR / "triton"
 TRITON_BUILD_DIR = BUILD_DIR / "triton-build"
 
-TRITON_VERSION = "1.0.0"
-TRITON_URLS = {
-    "linux": f"https://github.com/JonathanSalwan/Triton/archive/refs/tags/v{TRITON_VERSION}.tar.gz",
-    "windows": f"https://github.com/JonathanSalwan/Triton/archive/refs/tags/v{TRITON_VERSION}.zip",
-    "darwin": f"https://github.com/JonathanSalwan/Triton/archive/refs/tags/v{TRITON_VERSION}.tar.gz"
-}
+TRITON_REPO_URL = "https://github.com/JonathanSalwan/Triton.git"
 
 def get_platform():
     """Detect the current platform."""
@@ -31,10 +23,8 @@ def get_platform():
         return "linux"
     elif system == "windows":
         return "windows"
-    elif system == "darwin":
-        return "darwin"
     else:
-        raise RuntimeError(f"Unsupported platform: {system}")
+        raise RuntimeError(f"Unsupported platform: {system}. Only Linux and Windows are supported.")
 
 def run_command(cmd, cwd=None, check=True):
     """Run a shell command and return the result."""
@@ -54,45 +44,50 @@ def run_command(cmd, cwd=None, check=True):
     
     return result
 
-def download_triton():
-    """Download Triton source code."""
-    platform_name = get_platform()
-    url = TRITON_URLS[platform_name]
-    
-    print(f"Downloading Triton {TRITON_VERSION} for {platform_name}...")
+def clone_triton():
+    """Clone Triton source code from GitHub."""
+    print("Cloning Triton from GitHub...")
     
     BUILD_DIR.mkdir(exist_ok=True)
     
-    if platform_name == "windows":
-        archive_path = BUILD_DIR / f"triton-{TRITON_VERSION}.zip"
-    else:
-        archive_path = BUILD_DIR / f"triton-{TRITON_VERSION}.tar.gz"
-    
-    if not archive_path.exists():
-        urllib.request.urlretrieve(url, archive_path)
-        print(f"Downloaded to {archive_path}")
-    else:
-        print(f"Archive already exists: {archive_path}")
-    
-    # Extract archive
     if TRITON_DIR.exists():
-        shutil.rmtree(TRITON_DIR)
-    
-    if platform_name == "windows":
-        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-            zip_ref.extractall(BUILD_DIR)
-        extracted_dir = BUILD_DIR / f"Triton-{TRITON_VERSION}"
+        print(f"Triton directory already exists at {TRITON_DIR}")
+        # Update existing repository
+        run_command(["git", "fetch", "--all"], cwd=TRITON_DIR)
+        run_command(["git", "reset", "--hard", "origin/master"], cwd=TRITON_DIR)
+        print("Updated Triton to latest master")
     else:
-        with tarfile.open(archive_path, 'r:gz') as tar_ref:
-            tar_ref.extractall(BUILD_DIR)
-        extracted_dir = BUILD_DIR / f"Triton-{TRITON_VERSION}"
+        # Clone repository
+        run_command(["git", "clone", "--branch", "master", TRITON_REPO_URL, str(TRITON_DIR)])
+        print(f"Cloned Triton to {TRITON_DIR}")
+
+def install_triton_dependencies_linux():
+    """Install Triton dependencies on Linux."""
+    print("Installing Triton dependencies for Linux...")
     
-    extracted_dir.rename(TRITON_DIR)
-    print(f"Extracted Triton to {TRITON_DIR}")
+    # Check if we can install dependencies automatically
+    distro_commands = [
+        # Ubuntu/Debian
+        ["apt", "update"],
+        ["apt", "install", "-y", "libcapstone-dev", "libboost-all-dev", "python3-dev", "libz3-dev"],
+        # Alternative for systems without libz3-dev
+        ["apt", "install", "-y", "libcapstone-dev", "libboost-all-dev", "python3-dev"]
+    ]
+    
+    print("Note: You may need to install dependencies manually:")
+    print("Ubuntu/Debian: sudo apt install libcapstone-dev libboost-all-dev python3-dev libz3-dev")
+    print("CentOS/RHEL: sudo yum install capstone-devel boost-devel python3-devel")
+    print("Arch: sudo pacman -S capstone boost python")
 
 def build_triton():
     """Build Triton library."""
     print("Building Triton...")
+    
+    platform_name = get_platform()
+    
+    # Install dependencies if on Linux
+    if platform_name == "linux":
+        install_triton_dependencies_linux()
     
     if TRITON_BUILD_DIR.exists():
         shutil.rmtree(TRITON_BUILD_DIR)
@@ -107,16 +102,54 @@ def build_triton():
     ]
     
     # Platform-specific configurations
-    platform_name = get_platform()
     if platform_name == "windows":
-        cmake_cmd.extend(["-G", "Visual Studio 16 2019", "-A", "x64"])
+        # Use latest Visual Studio generator
+        cmake_cmd.extend(["-A", "x64"])
+        # Try to find the best generator automatically
+        generators = [
+            "Visual Studio 17 2022",
+            "Visual Studio 16 2019", 
+            "Visual Studio 15 2017"
+        ]
+        
+        generator_found = False
+        for gen in generators:
+            try:
+                test_cmd = cmake_cmd + ["-G", gen]
+                run_command(test_cmd + ["--help"], check=False)
+                cmake_cmd.extend(["-G", gen])
+                generator_found = True
+                break
+            except:
+                continue
+        
+        if not generator_found:
+            print("Warning: Could not find Visual Studio generator. Using default.")
+    
+    elif platform_name == "linux":
+        # Add Linux-specific optimizations
+        cmake_cmd.extend([
+            "-DBOOST_INTERFACE=ON",
+            "-DPYTHON_INTERFACE=ON"
+        ])
+        
+        # Try to enable Z3 if available
+        try:
+            run_command(["pkg-config", "--exists", "z3"], check=False)
+            cmake_cmd.append("-DZ3_INTERFACE=ON")
+            print("Z3 found, enabling Z3 interface")
+        except:
+            print("Z3 not found, building without Z3 interface")
     
     run_command(cmake_cmd, cwd=TRITON_BUILD_DIR)
     
     # Build Triton
     build_cmd = ["cmake", "--build", ".", "--config", "Release"]
-    if platform_name != "windows":
+    if platform_name == "linux":
         build_cmd.extend(["-j", str(os.cpu_count() or 4)])
+    elif platform_name == "windows":
+        # Use parallel build on Windows too
+        build_cmd.extend(["--parallel", str(os.cpu_count() or 4)])
     
     run_command(build_cmd, cwd=TRITON_BUILD_DIR)
     
@@ -189,10 +222,18 @@ def check_dependencies():
     platform_name = get_platform()
     if platform_name == "windows":
         # On Windows, we need Visual Studio or Build Tools
+        vs_found = False
         try:
-            run_command(["where", "msbuild"], check=False)
+            result = run_command(["where", "msbuild"], check=False)
+            if result.returncode == 0:
+                vs_found = True
         except:
-            print("Warning: MSBuild not found. Please install Visual Studio or Build Tools for Visual Studio.")
+            pass
+        
+        if not vs_found:
+            print("Error: MSBuild not found. Please install Visual Studio 2017 or later, or Build Tools for Visual Studio.")
+            print("Download from: https://visualstudio.microsoft.com/downloads/")
+            return False
     else:
         required_tools.extend(["make", "gcc"])
     
@@ -200,14 +241,19 @@ def check_dependencies():
     for tool in required_tools:
         try:
             if platform_name == "windows":
-                run_command(["where", tool], check=False)
+                result = run_command(["where", tool], check=False)
             else:
-                run_command(["which", tool], check=False)
+                result = run_command(["which", tool], check=False)
+            
+            if result.returncode != 0:
+                missing_tools.append(tool)
         except:
             missing_tools.append(tool)
     
     if missing_tools:
         print(f"Error: Missing required tools: {', '.join(missing_tools)}")
+        if platform_name == "linux":
+            print("Install with: sudo apt install cmake git build-essential")
         return False
     
     print("All required build tools are available.")
@@ -217,8 +263,8 @@ def main():
     parser = argparse.ArgumentParser(description="Build BScanner with automatic Triton dependency management")
     parser.add_argument("command", nargs="?", default="build", choices=["build", "clean"],
                        help="Command to execute (default: build)")
-    parser.add_argument("--force-download", action="store_true",
-                       help="Force re-download of Triton even if it exists")
+    parser.add_argument("--force-clone", action="store_true",
+                       help="Force re-clone of Triton even if it exists")
     parser.add_argument("--force-rebuild", action="store_true",
                        help="Force rebuild of Triton even if it's already built")
     
@@ -232,9 +278,11 @@ def main():
         sys.exit(1)
     
     try:
-        # Download Triton if needed
-        if args.force_download or not TRITON_DIR.exists():
-            download_triton()
+        # Clone Triton if needed
+        if args.force_clone or not TRITON_DIR.exists():
+            if TRITON_DIR.exists() and args.force_clone:
+                shutil.rmtree(TRITON_DIR)
+            clone_triton()
         else:
             print(f"Triton source already exists at {TRITON_DIR}")
         
