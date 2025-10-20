@@ -1,6 +1,8 @@
 #pragma once
 #include "binary_format.h"
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 class PeFormat : public BinaryFormat {
 public:

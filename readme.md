@@ -21,6 +21,22 @@ Outputs are:
 
 OS-specific capabilities such as unix sockets or filesystem FIFO queues are not analysed as the semantics of these are too detailed to be useful, and most software primarially interacts with other software using files and network calls.
 
+# Building
+
+Builds are run via `build.py` which downloads and compiles all dependencies before building `bscanner` itself. The tool is designed to be
+platform agnostic, but cross-compilation is out of scope for the tool.
+
+```bash
+uv run build.py
+```
+
+# Usage
+
+```bash
+
+# TODO document cli usage
+
+```
 
 # Useful Research
 

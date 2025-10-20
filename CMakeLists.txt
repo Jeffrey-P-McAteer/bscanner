@@ -16,7 +16,7 @@ if(TRITON_ROOT)
 endif()
 
 find_path(TRITON_INCLUDE_DIR
-    NAMES triton/api.hpp
+    NAMES triton/context.hpp
     PATHS
         ${TRITON_ROOT}/include
         /usr/include
@@ -37,6 +37,20 @@ find_library(TRITON_LIBRARY
 
 if(NOT TRITON_INCLUDE_DIR OR NOT TRITON_LIBRARY)
     message(FATAL_ERROR "Triton library not found. Please install Triton or set TRITON_ROOT")
+endif()
+
+# Check for Z3 headers that Triton depends on
+find_path(Z3_INCLUDE_DIR
+    NAMES z3++.h
+    PATHS
+        ${TRITON_ROOT}/../z3-build/install/include
+        /usr/include
+        /usr/local/include
+    DOC "Z3 include directory"
+)
+
+if(Z3_INCLUDE_DIR)
+    include_directories(${Z3_INCLUDE_DIR})
 endif()
 
 include_directories(${TRITON_INCLUDE_DIR})

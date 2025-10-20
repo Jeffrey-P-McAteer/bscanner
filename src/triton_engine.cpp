@@ -15,19 +15,19 @@ TritonEngine::~TritonEngine() = default;
 
 void TritonEngine::setup_architecture() {
     if (binary_format_->is_64bit()) {
-        api_.setArchitecture(triton::arch::ARCH_X86_64);
+        ctx_.setArchitecture(triton::arch::ARCH_X86_64);
     } else {
-        api_.setArchitecture(triton::arch::ARCH_X86);
+        ctx_.setArchitecture(triton::arch::ARCH_X86);
     }
     
-    api_.setMode(triton::modes::ALIGNED_MEMORY, true);
-    api_.setMode(triton::modes::AST_OPTIMIZATIONS, true);
+    ctx_.setMode(triton::modes::ALIGNED_MEMORY, true);
+    ctx_.setMode(triton::modes::AST_OPTIMIZATIONS, true);
 }
 
 void TritonEngine::setup_callbacks() {
-    api_.addCallback(triton::callbacks::GET_CONCRETE_MEMORY_VALUE, 
-        [this](triton::API& api, const triton::MemoryAccess& mem) {
-            memory_callback(api, mem);
+    ctx_.addCallback(triton::callbacks::GET_CONCRETE_MEMORY_VALUE, 
+        [this](triton::Context& ctx, const triton::arch::MemoryAccess& mem) {
+            memory_callback(ctx, mem);
         });
 }
 
@@ -45,17 +45,17 @@ void TritonEngine::load_binary() {
     file.read(reinterpret_cast<char*>(binary_data.data()), size);
     
     uint64_t base_addr = binary_format_->get_base_address();
-    api_.setConcreteMemoryArea(base_addr, binary_data);
+    ctx_.setConcreteMemoryArea(base_addr, binary_data);
     
     if (binary_format_->is_64bit()) {
-        api_.setConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP), 
                                       binary_format_->get_entry_point());
-        api_.setConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_64_RSP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RSP), 
                                       0x7fffffffe000ULL);
     } else {
-        api_.setConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_EIP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_EIP), 
                                       static_cast<uint32_t>(binary_format_->get_entry_point()));
-        api_.setConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_ESP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_ESP), 
                                       0xbffff000U);
     }
 }
@@ -86,19 +86,19 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             
             triton::uint64 pc;
             if (binary_format_->is_64bit()) {
-                pc = api_.getConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP)).convert_to<triton::uint64>();
+                pc = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP)).convert_to<triton::uint64>();
             } else {
-                pc = api_.getConcreteRegisterValue(api_.getRegister(triton::arch::x86::ID_REG_X86_EIP)).convert_to<triton::uint64>();
+                pc = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_EIP)).convert_to<triton::uint64>();
             }
             
             auto instruction = triton::Instruction();
             instruction.setAddress(pc);
             
             triton::uint8 opcodes[16];
-            api_.getConcreteMemoryArea(pc, opcodes, 16);
+            ctx_.getConcreteMemoryArea(pc, opcodes, 16);
             instruction.setOpcodes(opcodes, 16);
             
-            if (!api_.processing(instruction)) {
+            if (!ctx_.processing(instruction)) {
                 std::cout << "Execution finished or invalid instruction" << std::endl;
                 break;
             }
@@ -110,14 +110,8 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
     }
 }
 
-void TritonEngine::memory_callback(triton::API& api, const triton::MemoryAccess& mem) {
+void TritonEngine::memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem) {
     if (io_tracker_) {
         io_tracker_->track_memory_access(mem.getAddress(), mem.getSize(), mem.getType());
-    }
-}
-
-void TritonEngine::syscall_callback(triton::API& api, const triton::syscalls::SyscallEntry& syscall) {
-    if (io_tracker_) {
-        io_tracker_->track_syscall(syscall.getNumber(), syscall.getName());
     }
 }

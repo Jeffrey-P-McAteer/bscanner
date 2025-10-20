@@ -267,12 +267,14 @@ def build_bscanner():
     bscanner_build_dir.mkdir(parents=True)
     
     triton_install_dir = TRITON_BUILD_DIR / "install"
+    z3_install_dir = Z3_BUILD_DIR / "install"
     
     # Configure BScanner build
     cmake_cmd = [
         "cmake",
         str(REPO_DIR),
         f"-DTRITON_ROOT={triton_install_dir}",
+        f"-DZ3_INCLUDE_DIR={z3_install_dir / 'include'}",
         "-DCMAKE_BUILD_TYPE=Release"
     ]
     

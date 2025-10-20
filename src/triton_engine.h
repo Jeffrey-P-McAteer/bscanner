@@ -1,7 +1,7 @@
 #pragma once
 #include "binary_format.h"
 #include "io_tracker.h"
-#include <triton/api.hpp>
+#include <triton/context.hpp>
 #include <map>
 #include <vector>
 #include <string>
@@ -20,12 +20,11 @@ public:
 private:
     BinaryFormat* binary_format_;
     IOTracker* io_tracker_;
-    triton::API api_;
+    triton::Context ctx_;
     std::map<std::string, std::string> env_vars_;
     std::vector<std::string> args_;
     
     void setup_architecture();
     void setup_callbacks();
-    void memory_callback(triton::API& api, const triton::MemoryAccess& mem);
-    void syscall_callback(triton::API& api, const triton::syscalls::SyscallEntry& syscall);
+    void memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem);
 };
