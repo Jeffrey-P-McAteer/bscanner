@@ -31,4 +31,5 @@ private:
     void memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem);
     void check_syscall(const triton::arch::Instruction& instruction);
     void log_instruction(const triton::arch::Instruction& instruction, int verbosity_level);
+    void simulate_instruction_effects(const triton::arch::Instruction& instruction, const std::string& disasm);
 };
