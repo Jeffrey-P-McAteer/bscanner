@@ -13,8 +13,11 @@ REPO_DIR = Path(__file__).parent.absolute()
 BUILD_DIR = REPO_DIR / "build"
 TRITON_DIR = BUILD_DIR / "triton"
 TRITON_BUILD_DIR = BUILD_DIR / "triton-build"
+Z3_DIR = BUILD_DIR / "z3"
+Z3_BUILD_DIR = BUILD_DIR / "z3-build"
 
 TRITON_REPO_URL = "https://github.com/JonathanSalwan/Triton.git"
+Z3_REPO_URL = "https://github.com/Z3Prover/z3.git"
 
 def get_platform():
     """Detect the current platform."""
@@ -60,6 +63,85 @@ def clone_triton():
         # Clone repository
         run_command(["git", "clone", "--branch", "master", TRITON_REPO_URL, str(TRITON_DIR)])
         print(f"Cloned Triton to {TRITON_DIR}")
+
+def clone_z3():
+    """Clone Z3 source code from GitHub."""
+    print("Cloning Z3 from GitHub...")
+    
+    BUILD_DIR.mkdir(exist_ok=True)
+    
+    if Z3_DIR.exists():
+        print(f"Z3 directory already exists at {Z3_DIR}")
+        # Update existing repository
+        run_command(["git", "fetch", "--all"], cwd=Z3_DIR)
+        run_command(["git", "reset", "--hard", "origin/master"], cwd=Z3_DIR)
+        print("Updated Z3 to latest master")
+    else:
+        # Clone repository
+        run_command(["git", "clone", "--branch", "master", Z3_REPO_URL, str(Z3_DIR)])
+        print(f"Cloned Z3 to {Z3_DIR}")
+
+def build_z3():
+    """Build Z3 library."""
+    print("Building Z3...")
+    
+    platform_name = get_platform()
+    
+    if Z3_BUILD_DIR.exists():
+        shutil.rmtree(Z3_BUILD_DIR)
+    Z3_BUILD_DIR.mkdir(parents=True)
+    
+    # Configure Z3 build
+    cmake_cmd = [
+        "cmake",
+        str(Z3_DIR),
+        f"-DCMAKE_INSTALL_PREFIX={Z3_BUILD_DIR / 'install'}",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DZ3_BUILD_LIBZ3_SHARED=ON"
+    ]
+    
+    # Platform-specific configurations
+    if platform_name == "windows":
+        # Use latest Visual Studio generator
+        cmake_cmd.extend(["-A", "x64"])
+        # Try to find the best generator automatically
+        generators = [
+            "Visual Studio 17 2022",
+            "Visual Studio 16 2019", 
+            "Visual Studio 15 2017"
+        ]
+        
+        generator_found = False
+        for gen in generators:
+            try:
+                # Test if generator is available
+                test_result = run_command(["cmake", "-G", gen, "--help"], check=False)
+                if test_result.returncode == 0:
+                    cmake_cmd.extend(["-G", gen])
+                    generator_found = True
+                    break
+            except:
+                continue
+        
+        if not generator_found:
+            print("Warning: Could not find Visual Studio generator. Using default.")
+    
+    run_command(cmake_cmd, cwd=Z3_BUILD_DIR)
+    
+    # Build Z3
+    build_cmd = ["cmake", "--build", ".", "--config", "Release"]
+    if platform_name == "linux":
+        build_cmd.extend(["-j", str(os.cpu_count() or 4)])
+    elif platform_name == "windows":
+        build_cmd.extend(["--parallel", str(os.cpu_count() or 4)])
+    
+    run_command(build_cmd, cwd=Z3_BUILD_DIR)
+    
+    # Install Z3
+    install_cmd = ["cmake", "--install", ".", "--config", "Release"]
+    run_command(install_cmd, cwd=Z3_BUILD_DIR)
+    
+    print(f"Z3 built and installed to {Z3_BUILD_DIR / 'install'}")
 
 def install_triton_dependencies_linux():
     """Install Triton dependencies on Linux."""
@@ -132,14 +214,30 @@ def build_triton():
             "-DBOOST_INTERFACE=ON",
             "-DPYTHON_INTERFACE=ON"
         ])
+    
+    # Configure Z3 paths (both platforms)
+    z3_install_dir = Z3_BUILD_DIR / "install"
+    if z3_install_dir.exists():
+        z3_lib_dir = z3_install_dir / "lib"
         
-        # Try to enable Z3 if available
-        try:
-            run_command(["pkg-config", "--exists", "z3"], check=False)
-            cmake_cmd.append("-DZ3_INTERFACE=ON")
-            print("Z3 found, enabling Z3 interface")
-        except:
-            print("Z3 not found, building without Z3 interface")
+        # Find the correct Z3 library file
+        if platform_name == "windows":
+            z3_lib_file = z3_lib_dir / "z3.lib"
+            if not z3_lib_file.exists():
+                z3_lib_file = z3_lib_dir / "libz3.lib"
+        else:
+            z3_lib_file = z3_lib_dir / "libz3.so"
+            if not z3_lib_file.exists():
+                z3_lib_file = z3_lib_dir / "libz3.a"
+        
+        cmake_cmd.extend([
+            "-DZ3_INTERFACE=ON",
+            f"-DZ3_INCLUDE_DIRS={z3_install_dir / 'include'}",
+            f"-DZ3_LIBRARIES={z3_lib_file}"
+        ])
+        print(f"Using built Z3 library for Triton: {z3_lib_file}")
+    else:
+        print("Z3 not built, Triton will be built without Z3 interface")
     
     run_command(cmake_cmd, cwd=TRITON_BUILD_DIR)
     
@@ -222,15 +320,7 @@ def check_dependencies():
     platform_name = get_platform()
     if platform_name == "windows":
         # On Windows, we need Visual Studio or Build Tools
-        vs_found = False
-        try:
-            result = run_command(["where", "msbuild"], check=False)
-            if result.returncode == 0:
-                vs_found = True
-        except:
-            pass
-        
-        if not vs_found:
+        if not shutil.which("msbuild"):
             print("Error: MSBuild not found. Please install Visual Studio 2017 or later, or Build Tools for Visual Studio.")
             print("Download from: https://visualstudio.microsoft.com/downloads/")
             return False
@@ -239,15 +329,7 @@ def check_dependencies():
     
     missing_tools = []
     for tool in required_tools:
-        try:
-            if platform_name == "windows":
-                result = run_command(["where", tool], check=False)
-            else:
-                result = run_command(["which", tool], check=False)
-            
-            if result.returncode != 0:
-                missing_tools.append(tool)
-        except:
+        if not shutil.which(tool):
             missing_tools.append(tool)
     
     if missing_tools:
@@ -278,6 +360,21 @@ def main():
         sys.exit(1)
     
     try:
+        # Clone Z3 if needed
+        if args.force_clone or not Z3_DIR.exists():
+            if Z3_DIR.exists() and args.force_clone:
+                shutil.rmtree(Z3_DIR)
+            clone_z3()
+        else:
+            print(f"Z3 source already exists at {Z3_DIR}")
+        
+        # Build Z3 if needed
+        z3_install_dir = Z3_BUILD_DIR / "install"
+        if args.force_rebuild or not z3_install_dir.exists():
+            build_z3()
+        else:
+            print(f"Z3 already built at {z3_install_dir}")
+        
         # Clone Triton if needed
         if args.force_clone or not TRITON_DIR.exists():
             if TRITON_DIR.exists() and args.force_clone:
