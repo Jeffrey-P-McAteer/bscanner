@@ -26,9 +26,12 @@ void TritonEngine::setup_architecture() {
 
 void TritonEngine::setup_callbacks() {
     ctx_.addCallback(triton::callbacks::GET_CONCRETE_MEMORY_VALUE, 
-        [this](triton::Context& ctx, const triton::arch::MemoryAccess& mem) {
-            memory_callback(ctx, mem);
-        });
+        triton::ComparableFunctor<void(triton::Context&, const triton::arch::MemoryAccess&)>(
+            std::function<void(triton::Context&, const triton::arch::MemoryAccess&)>(
+                [this](triton::Context& ctx, const triton::arch::MemoryAccess& mem) {
+                    memory_callback(ctx, mem);
+                }),
+            this));
 }
 
 void TritonEngine::load_binary() {
@@ -45,17 +48,17 @@ void TritonEngine::load_binary() {
     file.read(reinterpret_cast<char*>(binary_data.data()), size);
     
     uint64_t base_addr = binary_format_->get_base_address();
-    ctx_.setConcreteMemoryArea(base_addr, binary_data);
+    ctx_.setConcreteMemoryAreaValue(base_addr, binary_data);
     
     if (binary_format_->is_64bit()) {
-        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RIP), 
                                       binary_format_->get_entry_point());
-        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RSP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RSP), 
                                       0x7fffffffe000ULL);
     } else {
-        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_EIP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EIP), 
                                       static_cast<uint32_t>(binary_format_->get_entry_point()));
-        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_ESP), 
+        ctx_.setConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_ESP), 
                                       0xbffff000U);
     }
 }
@@ -86,17 +89,16 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             
             triton::uint64 pc;
             if (binary_format_->is_64bit()) {
-                pc = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_64_RIP)).convert_to<triton::uint64>();
+                pc = static_cast<triton::uint64>(ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RIP)));
             } else {
-                pc = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::x86::ID_REG_X86_EIP)).convert_to<triton::uint64>();
+                pc = static_cast<triton::uint64>(ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EIP)));
             }
             
-            auto instruction = triton::Instruction();
+            auto instruction = triton::arch::Instruction();
             instruction.setAddress(pc);
             
-            triton::uint8 opcodes[16];
-            ctx_.getConcreteMemoryArea(pc, opcodes, 16);
-            instruction.setOpcodes(opcodes, 16);
+            auto opcodes = ctx_.getConcreteMemoryAreaValue(pc, 16);
+            instruction.setOpcode(opcodes.data(), opcodes.size());
             
             if (!ctx_.processing(instruction)) {
                 std::cout << "Execution finished or invalid instruction" << std::endl;

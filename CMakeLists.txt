@@ -39,7 +39,7 @@ if(NOT TRITON_INCLUDE_DIR OR NOT TRITON_LIBRARY)
     message(FATAL_ERROR "Triton library not found. Please install Triton or set TRITON_ROOT")
 endif()
 
-# Check for Z3 headers that Triton depends on
+# Check for Z3 headers and library that Triton depends on
 find_path(Z3_INCLUDE_DIR
     NAMES z3++.h
     PATHS
@@ -47,6 +47,15 @@ find_path(Z3_INCLUDE_DIR
         /usr/include
         /usr/local/include
     DOC "Z3 include directory"
+)
+
+find_library(Z3_LIBRARY
+    NAMES z3
+    PATHS
+        ${TRITON_ROOT}/../z3-build/install/lib
+        /usr/lib
+        /usr/local/lib
+    DOC "Z3 library"
 )
 
 if(Z3_INCLUDE_DIR)
@@ -68,6 +77,10 @@ set(SOURCES
 add_executable(bscanner ${SOURCES})
 
 target_link_libraries(bscanner ${TRITON_LIBRARY})
+
+if(Z3_LIBRARY)
+    target_link_libraries(bscanner ${Z3_LIBRARY})
+endif()
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(bscanner pthread dl)

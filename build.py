@@ -275,6 +275,7 @@ def build_bscanner():
         str(REPO_DIR),
         f"-DTRITON_ROOT={triton_install_dir}",
         f"-DZ3_INCLUDE_DIR={z3_install_dir / 'include'}",
+        f"-DZ3_LIBRARY={z3_install_dir / 'lib' / 'libz3.so'}",
         "-DCMAKE_BUILD_TYPE=Release"
     ]
     
