@@ -1,0 +1,54 @@
+# Build artifacts and directories
+build/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled executables
+bscanner
+bscanner.exe
+
+# Visual Studio files (Windows)
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.pdb
+*.ilk
+*.exp
+
+# Debug and release directories
+Debug/
+Release/
+x64/
+Win32/
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.log
+
+# Python cache (for build.py)
+__pycache__/
+*.pyc
+*.pyo
