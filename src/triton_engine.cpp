@@ -6,7 +6,13 @@
 #include <thread>
 
 TritonEngine::TritonEngine(BinaryFormat* binary_format) 
-    : binary_format_(binary_format), io_tracker_(nullptr) {
+    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(0) {
+    setup_architecture();
+    setup_callbacks();
+}
+
+TritonEngine::TritonEngine(BinaryFormat* binary_format, int verbosity_level) 
+    : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(verbosity_level) {
     setup_architecture();
     setup_callbacks();
 }
@@ -119,6 +125,7 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             
             instruction_count++;
             check_syscall(instruction);
+            log_instruction(instruction, verbosity_level_);
             
             // Limit instruction count to prevent infinite loops
             if (instruction_count > 10000) {
@@ -157,4 +164,32 @@ void TritonEngine::check_syscall(const triton::arch::Instruction& instruction) {
             io_tracker_->track_syscall(eax_val, "int80_" + std::to_string(eax_val));
         }
     }
+}
+
+void TritonEngine::log_instruction(const triton::arch::Instruction& instruction, int verbosity_level) {
+    if (verbosity_level < 2) return;
+    
+    auto mnemonic = instruction.getDisassembly();
+    auto address = instruction.getAddress();
+    
+    std::cerr << "[INSTRUCTION] 0x" << std::hex << address << ": " << mnemonic;
+    
+    // Add syscall detection info for -vvv
+    if (verbosity_level > 2) {
+        if (binary_format_->is_64bit()) {
+            if (mnemonic.find("syscall") != std::string::npos) {
+                auto rax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_RAX));
+                auto rax_val = static_cast<uint64_t>(rax);
+                std::cerr << " [SYSCALL DETECTED: rax=" << std::dec << rax_val << "]";
+            }
+        } else {
+            if (mnemonic.find("int") != std::string::npos && mnemonic.find("0x80") != std::string::npos) {
+                auto eax = ctx_.getConcreteRegisterValue(ctx_.getRegister(triton::arch::ID_REG_X86_EAX));
+                auto eax_val = static_cast<uint64_t>(eax);
+                std::cerr << " [INT80 DETECTED: eax=" << std::dec << eax_val << "]";
+            }
+        }
+    }
+    
+    std::cerr << std::endl;
 }

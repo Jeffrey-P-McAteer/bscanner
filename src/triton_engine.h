@@ -9,6 +9,7 @@
 class TritonEngine {
 public:
     explicit TritonEngine(BinaryFormat* binary_format);
+    TritonEngine(BinaryFormat* binary_format, int verbosity_level);
     ~TritonEngine();
     
     void load_binary();
@@ -23,9 +24,11 @@ private:
     triton::Context ctx_;
     std::map<std::string, std::string> env_vars_;
     std::vector<std::string> args_;
+    int verbosity_level_;
     
     void setup_architecture();
     void setup_callbacks();
     void memory_callback(triton::Context& ctx, const triton::arch::MemoryAccess& mem);
     void check_syscall(const triton::arch::Instruction& instruction);
+    void log_instruction(const triton::arch::Instruction& instruction, int verbosity_level);
 };
