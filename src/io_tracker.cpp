@@ -4,17 +4,32 @@
 #include <iomanip>
 #include <chrono>
 
-IOTracker::IOTracker() : current_timestamp_(0) {}
+IOTracker::IOTracker() : current_timestamp_(0), verbosity_level_(0) {}
+
+IOTracker::IOTracker(int verbosity_level) : current_timestamp_(0), verbosity_level_(verbosity_level) {}
 
 IOTracker::~IOTracker() = default;
 
 void IOTracker::track_memory_access(uint64_t address, size_t size, int access_type) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_memory_access] address=0x" << std::hex << address 
+                  << ", size=" << std::dec << size << ", access_type=" << access_type << std::endl;
+    }
 }
 
 void IOTracker::track_syscall(uint64_t syscall_number, const std::string& syscall_name) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_syscall] syscall_number=" << syscall_number 
+                  << ", syscall_name=\"" << syscall_name << "\"" << std::endl;
+    }
 }
 
 void IOTracker::track_file_operation(const std::string& filename, IOType type, const std::vector<uint8_t>& data) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_file_operation] filename=\"" << filename 
+                  << "\", type=" << (type == IOType::FILE_READ ? "FILE_READ" : "FILE_WRITE")
+                  << ", data_size=" << data.size() << std::endl;
+    }
     if (type == IOType::FILE_READ) {
         add_event(type, filename, "", data);
     } else if (type == IOType::FILE_WRITE) {
@@ -23,6 +38,11 @@ void IOTracker::track_file_operation(const std::string& filename, IOType type, c
 }
 
 void IOTracker::track_network_operation(const std::string& endpoint, IOType type, const std::vector<uint8_t>& data) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_network_operation] endpoint=\"" << endpoint 
+                  << "\", type=" << (type == IOType::NETWORK_READ ? "NETWORK_READ" : "NETWORK_WRITE")
+                  << ", data_size=" << data.size() << std::endl;
+    }
     if (type == IOType::NETWORK_READ) {
         add_event(type, endpoint, "", data);
     } else if (type == IOType::NETWORK_WRITE) {
@@ -31,11 +51,18 @@ void IOTracker::track_network_operation(const std::string& endpoint, IOType type
 }
 
 void IOTracker::track_cli_argument(const std::string& arg) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_cli_argument] arg=\"" << arg << "\"" << std::endl;
+    }
     std::vector<uint8_t> arg_data(arg.begin(), arg.end());
     add_event(IOType::CLI_ARG, "command_line", "", arg_data);
 }
 
 void IOTracker::track_environment_variable(const std::string& name, const std::string& value) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_environment_variable] name=\"" << name 
+                  << "\", value=\"" << value << "\"" << std::endl;
+    }
     std::vector<uint8_t> value_data(value.begin(), value.end());
     add_event(IOType::ENV_VAR, name, "", value_data);
 }

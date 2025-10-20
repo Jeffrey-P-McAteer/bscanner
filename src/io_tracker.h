@@ -32,6 +32,7 @@ struct InputOutputMapping {
 class IOTracker {
 public:
     IOTracker();
+    explicit IOTracker(int verbosity_level);
     ~IOTracker();
     
     void track_memory_access(uint64_t address, size_t size, int access_type);
@@ -51,6 +52,7 @@ public:
 private:
     std::vector<IOEvent> events_;
     uint64_t current_timestamp_;
+    int verbosity_level_;
     
     void add_event(IOType type, const std::string& source, const std::string& destination,
                    const std::vector<uint8_t>& data = {});

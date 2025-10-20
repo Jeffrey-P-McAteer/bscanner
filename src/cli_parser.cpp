@@ -13,7 +13,11 @@ AnalysisConfig CliParser::parse(int argc, char* argv[]) {
             config.help_requested = true;
             return config;
         } else if (arg == "-v" || arg == "--verbose") {
-            config.verbose = true;
+            config.verbosity_level = 1;
+        } else if (arg == "-vv") {
+            config.verbosity_level = 2;
+        } else if (arg == "-vvv") {
+            config.verbosity_level = 3;
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 >= argc) {
                 throw std::runtime_error("Missing value for output format");
@@ -61,7 +65,9 @@ void CliParser::print_help() const {
     std::cout << "  bscanner [OPTIONS] <binary>\n\n";
     std::cout << "OPTIONS:\n";
     std::cout << "  -h, --help              Show this help message\n";
-    std::cout << "  -v, --verbose           Enable verbose output\n";
+    std::cout << "  -v, --verbose           Enable verbose output (level 1)\n";
+    std::cout << "  -vv                     Enhanced verbose output (level 2)\n";
+    std::cout << "  -vvv                    Debug verbose output (level 3, shows IOTracker calls)\n";
     std::cout << "  -o, --output FORMAT     Output format (json, xml, text) [default: json]\n";
     std::cout << "  -t, --timeout SECONDS   Analysis timeout in seconds [default: 60]\n";
     std::cout << "  --env KEY=VALUE         Set environment variable for target\n";

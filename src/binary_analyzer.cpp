@@ -9,13 +9,13 @@ BinaryAnalyzer::BinaryAnalyzer(const AnalysisConfig& config)
     : config_(config) {
     detect_binary_format();
     setup_triton_engine();
-    io_tracker_ = std::make_unique<IOTracker>();
+    io_tracker_ = std::make_unique<IOTracker>(config_.verbosity_level);
 }
 
 BinaryAnalyzer::~BinaryAnalyzer() = default;
 
 void BinaryAnalyzer::analyze() {
-    if (config_.verbose) {
+    if (config_.verbosity_level > 0) {
         std::cout << "Starting analysis of: " << config_.target_binary << std::endl;
     }
     
@@ -34,12 +34,12 @@ void BinaryAnalyzer::detect_binary_format() {
     
     if (magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F') {
         binary_format_ = std::make_unique<ElfFormat>(config_.target_binary);
-        if (config_.verbose) {
+        if (config_.verbosity_level > 0) {
             std::cout << "Detected ELF format" << std::endl;
         }
     } else if (magic[0] == 'M' && magic[1] == 'Z') {
         binary_format_ = std::make_unique<PeFormat>(config_.target_binary);
-        if (config_.verbose) {
+        if (config_.verbosity_level > 0) {
             std::cout << "Detected PE format" << std::endl;
         }
     } else {

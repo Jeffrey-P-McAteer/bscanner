@@ -8,7 +8,7 @@ struct AnalysisConfig {
     std::vector<std::string> cli_args;
     std::map<std::string, std::string> env_vars;
     std::string output_format = "json";
-    bool verbose = false;
+    int verbosity_level = 0;
     bool help_requested = false;
     int timeout_seconds = 60;
 };
