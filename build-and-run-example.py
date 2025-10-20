@@ -28,7 +28,7 @@ def main(args=sys.argv):
   cmd = [
     'gcc',
       '-o', test_binary_path,
-      '-g',
+      '-g', '-march=x86-64',
       full_example_filepath
   ]
   print(f'> {" ".join(cmd)}')
