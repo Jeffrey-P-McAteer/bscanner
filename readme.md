@@ -22,6 +22,12 @@ Outputs are:
 OS-specific capabilities such as unix sockets or filesystem FIFO queues are not analysed as the semantics of these are too detailed to be useful, and most software primarially interacts with other software using files and network calls.
 
 
+# Useful Research
+
+ - https://raw.githubusercontent.com/JonathanSalwan/Triton/master/publications/StHack2015_Dynamic_Behavior_Analysis_using_Binary_Instrumentation_Jonathan_Salwan.pdf
+ - https://shell-storm.org/talks/SecurityDay2015_dynamic_symbolic_execution_Jonathan_Salwan.pdf
+
+
 
 
 
