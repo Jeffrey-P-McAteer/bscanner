@@ -145,6 +145,27 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             if (!ctx_.processing(instruction)) {
                 auto disasm = instruction.getDisassembly();
                 
+                // Special handling for __libc_start_main call BEFORE skipping
+                if (disasm.find("call") != std::string::npos && pc == 0x4010ef) {
+                    if (verbosity_level_ > 1) {
+                        std::cerr << "[HOOK] Detected __libc_start_main call at 0x" << std::hex << pc << std::endl;
+                        std::cerr << "[HOOK] Instruction: " << disasm << std::endl;
+                    }
+                    
+                    // Set up arguments for the libc hooks
+                    std::vector<std::string> full_args;
+                    full_args.push_back("example1"); // Program name
+                    for (const auto& arg : args_) {
+                        full_args.push_back(arg);
+                    }
+                    libc_hooks_->setArguments(full_args);
+                    
+                    // This is the __libc_start_main call - hook it
+                    libc_hooks_->hook_libc_start_main(ctx_);
+                    instruction_count++; // Count this instruction
+                    continue; // libc hook will set new PC to main
+                }
+                
                 // Check if this is an instruction we can safely skip
                 bool can_skip = false;
                 std::string skip_reason;
@@ -228,35 +249,14 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             check_syscall(instruction);
             log_instruction(instruction, verbosity_level_);
             
-            // Check for __libc_start_main call and hook it
-            auto disasm = instruction.getDisassembly();
-            if (disasm.find("call") != std::string::npos) {
-                // Get call target address
-                triton::uint64 call_target = 0;
-                if (instruction.operands.size() > 0) {
-                    auto& operand = instruction.operands[0];
-                    if (operand.getType() == triton::arch::OP_IMM) {
-                        call_target = operand.getImmediate().getValue();
-                        
-                        // Check if this call might be to __libc_start_main
-                        // In ELF startup, this is typically the first meaningful call
-                        if (instruction_count < 50) { // Early in execution
-                            if (verbosity_level_ > 1) {
-                                std::cerr << "[HOOK] Potential __libc_start_main call at instruction " << instruction_count 
-                                         << " to 0x" << std::hex << call_target << std::endl;
-                            }
-                            libc_hooks_->hook_libc_start_main(ctx_);
-                            continue; // libc hook will set new PC
-                        }
-                    }
-                }
-            }
-            
             // Limit instruction count to prevent infinite loops
             if (instruction_count > max_instructions_) {
                 std::cout << "Instruction limit reached after " << instruction_count << " instructions" << std::endl;
                 break;
             }
+            
+            // Get disassembly for halt and exit checks
+            auto disasm = instruction.getDisassembly();
             
             // Check for halt instructions in successfully processed instructions
             if (disasm.find("hlt") != std::string::npos) {

@@ -37,4 +37,5 @@ private:
     bool is_exit_syscall(const triton::arch::Instruction& instruction);
     void log_instruction(const triton::arch::Instruction& instruction, int verbosity_level);
     void simulate_instruction_effects(const triton::arch::Instruction& instruction, const std::string& disasm);
+    void setup_libc_hooks_with_args();
 };
