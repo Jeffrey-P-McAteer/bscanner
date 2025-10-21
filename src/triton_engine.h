@@ -1,10 +1,12 @@
 #pragma once
 #include "binary_format.h"
 #include "io_tracker.h"
+#include "libc_hooks.h"
 #include <triton/context.hpp>
 #include <map>
 #include <vector>
 #include <string>
+#include <memory>
 
 class TritonEngine {
 public:
@@ -26,6 +28,7 @@ private:
     std::vector<std::string> args_;
     int verbosity_level_;
     int max_instructions_;
+    std::unique_ptr<LibcHooks> libc_hooks_;
     
     void setup_architecture();
     void setup_callbacks();

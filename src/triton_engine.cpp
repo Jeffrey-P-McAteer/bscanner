@@ -10,12 +10,16 @@ TritonEngine::TritonEngine(BinaryFormat* binary_format)
     : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(0), max_instructions_(10000) {
     setup_architecture();
     setup_callbacks();
+    libc_hooks_ = std::make_unique<LibcHooks>(ctx_);
+    libc_hooks_->setupHooks();
 }
 
 TritonEngine::TritonEngine(BinaryFormat* binary_format, int verbosity_level, int max_instructions) 
     : binary_format_(binary_format), io_tracker_(nullptr), verbosity_level_(verbosity_level), max_instructions_(max_instructions) {
     setup_architecture();
     setup_callbacks();
+    libc_hooks_ = std::make_unique<LibcHooks>(ctx_);
+    libc_hooks_->setupHooks();
 }
 
 TritonEngine::~TritonEngine() = default;
@@ -224,6 +228,30 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             check_syscall(instruction);
             log_instruction(instruction, verbosity_level_);
             
+            // Check for __libc_start_main call and hook it
+            auto disasm = instruction.getDisassembly();
+            if (disasm.find("call") != std::string::npos) {
+                // Get call target address
+                triton::uint64 call_target = 0;
+                if (instruction.operands.size() > 0) {
+                    auto& operand = instruction.operands[0];
+                    if (operand.getType() == triton::arch::OP_IMM) {
+                        call_target = operand.getImmediate().getValue();
+                        
+                        // Check if this call might be to __libc_start_main
+                        // In ELF startup, this is typically the first meaningful call
+                        if (instruction_count < 50) { // Early in execution
+                            if (verbosity_level_ > 1) {
+                                std::cerr << "[HOOK] Potential __libc_start_main call at instruction " << instruction_count 
+                                         << " to 0x" << std::hex << call_target << std::endl;
+                            }
+                            libc_hooks_->hook_libc_start_main(ctx_);
+                            continue; // libc hook will set new PC
+                        }
+                    }
+                }
+            }
+            
             // Limit instruction count to prevent infinite loops
             if (instruction_count > max_instructions_) {
                 std::cout << "Instruction limit reached after " << instruction_count << " instructions" << std::endl;
@@ -231,7 +259,6 @@ void TritonEngine::execute_with_timeout(int timeout_seconds) {
             }
             
             // Check for halt instructions in successfully processed instructions
-            auto disasm = instruction.getDisassembly();
             if (disasm.find("hlt") != std::string::npos) {
                 std::cout << "Program reached halt instruction - analysis complete after " << instruction_count << " instructions" << std::endl;
                 break;

@@ -159,6 +159,8 @@ def install_triton_dependencies_linux():
     print("Ubuntu/Debian: sudo apt install libcapstone-dev libboost-all-dev python3-dev libz3-dev")
     print("CentOS/RHEL: sudo yum install capstone-devel boost-devel python3-devel")
     print("Arch: sudo pacman -S capstone boost python")
+    
+    # Note: Triton's hooking capabilities are built-in, no additional dependencies needed
 
 def build_triton():
     """Build Triton library."""

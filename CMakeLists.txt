@@ -72,6 +72,7 @@ set(SOURCES
     src/pe_format.cpp
     src/triton_engine.cpp
     src/io_tracker.cpp
+    src/libc_hooks.cpp
 )
 
 add_executable(bscanner ${SOURCES})
