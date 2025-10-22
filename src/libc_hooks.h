@@ -23,6 +23,12 @@ public:
     void hook_write(triton::Context& ctx);
     void hook_fwrite(triton::Context& ctx);
     void hook_puts(triton::Context& ctx);
+    void hook_socket(triton::Context& ctx);
+    void hook_bind(triton::Context& ctx);
+    void hook_listen(triton::Context& ctx);
+    void hook_accept(triton::Context& ctx);
+    void hook_recv(triton::Context& ctx);
+    void hook_send(triton::Context& ctx);
     
 private:
     triton::Context& triton_ctx_;

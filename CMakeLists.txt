@@ -75,7 +75,35 @@ set(SOURCES
     src/libc_hooks.cpp
 )
 
+# Add platform-specific network monitoring sources
+if(UNIX AND NOT APPLE)
+    set(SOURCES ${SOURCES}
+        src/network_monitor.cpp
+    )
+elseif(WIN32)
+    set(SOURCES ${SOURCES}
+        src/network_monitor_windows.cpp
+    )
+endif()
+
 add_executable(bscanner ${SOURCES})
+
+# Add platform-specific network wrapper executable
+if(UNIX AND NOT APPLE)
+    add_executable(network_wrapper 
+        src/network_wrapper.cpp
+        src/network_monitor.cpp
+        src/io_tracker.cpp
+    )
+    target_link_libraries(network_wrapper pthread)
+elseif(WIN32)
+    add_executable(network_wrapper 
+        src/network_wrapper.cpp
+        src/network_monitor_windows.cpp
+        src/io_tracker.cpp
+    )
+    target_link_libraries(network_wrapper ws2_32 tdh advapi32)
+endif()
 
 target_link_libraries(bscanner ${TRITON_LIBRARY})
 
@@ -88,7 +116,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(WIN32)
-    target_link_libraries(bscanner ws2_32)
+    target_link_libraries(bscanner ws2_32 tdh advapi32)
 endif()
 
 install(TARGETS bscanner

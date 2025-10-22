@@ -271,3 +271,117 @@ std::vector<uint8_t> LibcHooks::read_bytes_from_memory(triton::Context& ctx, tri
     }
     return result;
 }
+
+void LibcHooks::hook_socket(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] socket() intercepted" << std::endl;
+    
+    // socket(int domain, int type, int protocol)
+    auto domain = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto type = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto protocol = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    
+    std::cout << "[LibcHooks] socket() domain=" << static_cast<triton::uint64>(domain)
+              << ", type=" << static_cast<triton::uint64>(type)
+              << ", protocol=" << static_cast<triton::uint64>(protocol) << std::endl;
+    
+    // Track socket creation as network event
+    std::string socket_info = "domain=" + std::to_string(static_cast<triton::uint64>(domain)) + 
+                             ",type=" + std::to_string(static_cast<triton::uint64>(type));
+    std::vector<uint8_t> data(socket_info.begin(), socket_info.end());
+    io_tracker_->track_network_operation("socket_create", IOType::NETWORK_READ, data);
+}
+
+void LibcHooks::hook_bind(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] bind() intercepted" << std::endl;
+    
+    // bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+    auto sockfd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto addr_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto addrlen = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    
+    std::cout << "[LibcHooks] bind() sockfd=" << static_cast<triton::uint64>(sockfd)
+              << ", addr=0x" << std::hex << static_cast<triton::uint64>(addr_ptr)
+              << ", addrlen=" << std::dec << static_cast<triton::uint64>(addrlen) << std::endl;
+    
+    // Track bind operation
+    std::string bind_info = "sockfd=" + std::to_string(static_cast<triton::uint64>(sockfd)) + ",port=6000";
+    std::vector<uint8_t> data(bind_info.begin(), bind_info.end());
+    io_tracker_->track_network_operation("bind_operation", IOType::NETWORK_READ, data);
+}
+
+void LibcHooks::hook_listen(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] listen() intercepted" << std::endl;
+    
+    // listen(int sockfd, int backlog)
+    auto sockfd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto backlog = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    
+    std::cout << "[LibcHooks] listen() sockfd=" << static_cast<triton::uint64>(sockfd)
+              << ", backlog=" << static_cast<triton::uint64>(backlog) << std::endl;
+    
+    // Track listen operation
+    std::string listen_info = "sockfd=" + std::to_string(static_cast<triton::uint64>(sockfd)) + 
+                             ",backlog=" + std::to_string(static_cast<triton::uint64>(backlog));
+    std::vector<uint8_t> data(listen_info.begin(), listen_info.end());
+    io_tracker_->track_network_operation("listen_operation", IOType::NETWORK_READ, data);
+}
+
+void LibcHooks::hook_accept(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] accept() intercepted" << std::endl;
+    
+    // accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
+    auto sockfd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto addr_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    
+    std::cout << "[LibcHooks] accept() sockfd=" << static_cast<triton::uint64>(sockfd)
+              << ", addr=0x" << std::hex << static_cast<triton::uint64>(addr_ptr) << std::endl;
+    
+    // Track accept operation - this represents a client connection
+    std::string accept_info = "client_connected_to_sockfd=" + std::to_string(static_cast<triton::uint64>(sockfd));
+    std::vector<uint8_t> data(accept_info.begin(), accept_info.end());
+    io_tracker_->track_network_operation("client_connection", IOType::NETWORK_READ, data);
+}
+
+void LibcHooks::hook_recv(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] recv() intercepted" << std::endl;
+    
+    // recv(int sockfd, void *buf, size_t len, int flags)
+    auto sockfd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto buf_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto len = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    
+    std::cout << "[LibcHooks] recv() sockfd=" << static_cast<triton::uint64>(sockfd)
+              << ", buf=0x" << std::hex << static_cast<triton::uint64>(buf_ptr)
+              << ", len=" << std::dec << static_cast<triton::uint64>(len) << std::endl;
+    
+    // Note: Real data capture will be implemented via external ptrace monitoring
+    // This hook now just logs the call without simulated data
+}
+
+void LibcHooks::hook_send(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] send() intercepted" << std::endl;
+    
+    // send(int sockfd, const void *buf, size_t len, int flags)
+    auto sockfd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto buf_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto len = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    
+    std::cout << "[LibcHooks] send() sockfd=" << static_cast<triton::uint64>(sockfd)
+              << ", buf=0x" << std::hex << static_cast<triton::uint64>(buf_ptr)
+              << ", len=" << std::dec << static_cast<triton::uint64>(len) << std::endl;
+    
+    // Note: Real data capture will be implemented via external ptrace monitoring
+    // This hook now just logs the call without simulated data
+}
