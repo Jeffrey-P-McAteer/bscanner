@@ -75,7 +75,7 @@ set(SOURCES
     src/libc_hooks.cpp
 )
 
-# Add platform-specific network monitoring sources
+# Add platform-specific network monitoring sources to main bscanner
 if(UNIX AND NOT APPLE)
     set(SOURCES ${SOURCES}
         src/network_monitor.cpp
