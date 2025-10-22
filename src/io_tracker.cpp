@@ -50,6 +50,20 @@ void IOTracker::track_network_operation(const std::string& endpoint, IOType type
     }
 }
 
+void IOTracker::track_stdout_write(const std::vector<uint8_t>& data) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_stdout_write] data_size=" << data.size() << std::endl;
+    }
+    add_event(IOType::STDOUT_WRITE, "", "stdout", data);
+}
+
+void IOTracker::track_stderr_write(const std::vector<uint8_t>& data) {
+    if (verbosity_level_ > 2) {
+        std::cerr << "[IOTracker::track_stderr_write] data_size=" << data.size() << std::endl;
+    }
+    add_event(IOType::STDERR_WRITE, "", "stderr", data);
+}
+
 void IOTracker::track_cli_argument(const std::string& arg) {
     if (verbosity_level_ > 2) {
         std::cerr << "[IOTracker::track_cli_argument] arg=\"" << arg << "\"" << std::endl;
@@ -97,7 +111,8 @@ InputOutputMapping IOTracker::get_output_mappings() const {
     InputOutputMapping mapping;
     
     for (const auto& event : events_) {
-        if (event.type == IOType::FILE_WRITE || event.type == IOType::NETWORK_WRITE) {
+        if (event.type == IOType::FILE_WRITE || event.type == IOType::NETWORK_WRITE ||
+            event.type == IOType::STDOUT_WRITE || event.type == IOType::STDERR_WRITE) {
             mapping.outputs.push_back(event);
         }
     }
@@ -142,6 +157,8 @@ void IOTracker::output_json_report(std::ostream& out) const {
         switch (event.type) {
             case IOType::FILE_WRITE: out << "file_write"; break;
             case IOType::NETWORK_WRITE: out << "network_write"; break;
+            case IOType::STDOUT_WRITE: out << "stdout_write"; break;
+            case IOType::STDERR_WRITE: out << "stderr_write"; break;
             default: out << "unknown"; break;
         }
         out << "\",\n";
@@ -191,6 +208,8 @@ void IOTracker::output_xml_report(std::ostream& out) const {
         switch (event.type) {
             case IOType::FILE_WRITE: out << "file_write"; break;
             case IOType::NETWORK_WRITE: out << "network_write"; break;
+            case IOType::STDOUT_WRITE: out << "stdout_write"; break;
+            case IOType::STDERR_WRITE: out << "stderr_write"; break;
             default: out << "unknown"; break;
         }
         out << "</type>\n";
@@ -234,6 +253,8 @@ void IOTracker::output_text_report(std::ostream& out) const {
         switch (event.type) {
             case IOType::FILE_WRITE: out << "File Write"; break;
             case IOType::NETWORK_WRITE: out << "Network Write"; break;
+            case IOType::STDOUT_WRITE: out << "Stdout Write"; break;
+            case IOType::STDERR_WRITE: out << "Stderr Write"; break;
             default: out << "Unknown"; break;
         }
         out << "\n";

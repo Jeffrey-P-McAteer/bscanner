@@ -1,9 +1,10 @@
 #include "libc_hooks.h"
+#include "io_tracker.h"
 #include <iostream>
 #include <cstring>
 
 LibcHooks::LibcHooks(triton::Context& ctx) 
-    : triton_ctx_(ctx), main_hooked_(false), main_address_(0), argc_value_(0), argv_address_(0) {
+    : triton_ctx_(ctx), main_hooked_(false), main_address_(0), argc_value_(0), argv_address_(0), io_tracker_(nullptr) {
 }
 
 void LibcHooks::setupHooks() {
@@ -17,6 +18,10 @@ void LibcHooks::setArguments(const std::vector<std::string>& args) {
     for (size_t i = 0; i < args.size(); ++i) {
         std::cout << "[LibcHooks] argv[" << i << "] = \"" << args[i] << "\"" << std::endl;
     }
+}
+
+void LibcHooks::setIOTracker(IOTracker* tracker) {
+    io_tracker_ = tracker;
 }
 
 void LibcHooks::hook_libc_start_main(triton::Context& ctx) {
@@ -152,4 +157,117 @@ void LibcHooks::setup_argv_memory(triton::Context& ctx, const std::vector<std::s
     
     std::cout << "[LibcHooks] argc=" << std::dec << argc_value_ 
               << ", argv=0x" << std::hex << argv_address_ << std::endl;
+}
+
+void LibcHooks::hook_printf(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] printf() intercepted" << std::endl;
+    
+    // printf takes format string in RDI
+    auto format_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    std::string format_str = read_string_from_memory(ctx, static_cast<triton::uint64>(format_ptr));
+    
+    std::cout << "[LibcHooks] printf format: \"" << format_str << "\"" << std::endl;
+    
+    // For simplicity, we'll capture the format string as the output
+    // In a real implementation, you'd need to process the format string and arguments
+    std::vector<uint8_t> data(format_str.begin(), format_str.end());
+    io_tracker_->track_stdout_write(data);
+}
+
+void LibcHooks::hook_write(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] write() intercepted" << std::endl;
+    
+    // write(int fd, const void *buf, size_t count)
+    auto fd = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto buf_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto count = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    
+    std::cout << "[LibcHooks] write() fd=" << static_cast<triton::uint64>(fd) 
+              << ", buf=0x" << std::hex << static_cast<triton::uint64>(buf_ptr)
+              << ", count=" << std::dec << static_cast<triton::uint64>(count) << std::endl;
+    
+    // Read the data to be written
+    std::vector<uint8_t> data = read_bytes_from_memory(ctx, static_cast<triton::uint64>(buf_ptr), static_cast<size_t>(count));
+    
+    // Check file descriptor: 1 = stdout, 2 = stderr
+    if (static_cast<triton::uint64>(fd) == 1) {
+        io_tracker_->track_stdout_write(data);
+    } else if (static_cast<triton::uint64>(fd) == 2) {
+        io_tracker_->track_stderr_write(data);
+    }
+}
+
+void LibcHooks::hook_fwrite(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] fwrite() intercepted" << std::endl;
+    
+    // fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+    auto ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    auto size = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RSI));
+    auto nmemb = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDX));
+    auto stream = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RCX));
+    
+    size_t total_bytes = static_cast<size_t>(size) * static_cast<size_t>(nmemb);
+    
+    std::cout << "[LibcHooks] fwrite() ptr=0x" << std::hex << static_cast<triton::uint64>(ptr)
+              << ", size=" << std::dec << static_cast<triton::uint64>(size)
+              << ", nmemb=" << static_cast<triton::uint64>(nmemb)
+              << ", stream=0x" << std::hex << static_cast<triton::uint64>(stream) << std::endl;
+    
+    // Read the data to be written
+    std::vector<uint8_t> data = read_bytes_from_memory(ctx, static_cast<triton::uint64>(ptr), total_bytes);
+    
+    // For simplicity, assume stdout if stream looks like stdout (simplified check)
+    // In reality, you'd need to track FILE* structures
+    io_tracker_->track_stdout_write(data);
+}
+
+void LibcHooks::hook_puts(triton::Context& ctx) {
+    if (!io_tracker_) return;
+    
+    std::cout << "[LibcHooks] puts() intercepted" << std::endl;
+    
+    // puts takes string in RDI
+    auto str_ptr = ctx.getConcreteRegisterValue(ctx.getRegister(triton::arch::ID_REG_X86_RDI));
+    std::string str = read_string_from_memory(ctx, static_cast<triton::uint64>(str_ptr));
+    
+    std::cout << "[LibcHooks] puts string: \"" << str << "\"" << std::endl;
+    
+    // puts automatically adds a newline
+    str += "\n";
+    std::vector<uint8_t> data(str.begin(), str.end());
+    io_tracker_->track_stdout_write(data);
+}
+
+std::string LibcHooks::read_string_from_memory(triton::Context& ctx, triton::uint64 address, size_t max_length) {
+    std::string result;
+    for (size_t i = 0; i < max_length; ++i) {
+        try {
+            auto byte = ctx.getConcreteMemoryValue(address + i);
+            if (byte == 0) break; // null terminator
+            result += static_cast<char>(byte);
+        } catch (const std::exception& e) {
+            break; // Memory access failed
+        }
+    }
+    return result;
+}
+
+std::vector<uint8_t> LibcHooks::read_bytes_from_memory(triton::Context& ctx, triton::uint64 address, size_t length) {
+    std::vector<uint8_t> result;
+    result.reserve(length);
+    for (size_t i = 0; i < length; ++i) {
+        try {
+            auto byte = ctx.getConcreteMemoryValue(address + i);
+            result.push_back(static_cast<uint8_t>(byte));
+        } catch (const std::exception& e) {
+            break; // Memory access failed
+        }
+    }
+    return result;
 }
