@@ -140,6 +140,13 @@ void IOTracker::output_json_report(std::ostream& out) const {
         out << "\",\n";
         out << "        \"source\": \"" << escape_json_string(event.source) << "\",\n";
         out << "        \"data_hex\": \"" << data_to_hex_string(event.data) << "\",\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "        \"data_string_first_1024\": \"" << escape_json_string(utf8_string) << "\",\n";
+        }
+        
         out << "        \"timestamp\": " << event.timestamp << "\n";
         out << "      }";
         if (i + 1 < input_mapping.inputs.size()) out << ",";
@@ -164,6 +171,13 @@ void IOTracker::output_json_report(std::ostream& out) const {
         out << "\",\n";
         out << "        \"destination\": \"" << escape_json_string(event.destination) << "\",\n";
         out << "        \"data_hex\": \"" << data_to_hex_string(event.data) << "\",\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "        \"data_string_first_1024\": \"" << escape_json_string(utf8_string) << "\",\n";
+        }
+        
         out << "        \"timestamp\": " << event.timestamp << "\n";
         out << "      }";
         if (i + 1 < output_mapping.outputs.size()) out << ",";
@@ -194,6 +208,13 @@ void IOTracker::output_xml_report(std::ostream& out) const {
         out << "</type>\n";
         out << "      <source>" << escape_xml_string(event.source) << "</source>\n";
         out << "      <data_hex>" << data_to_hex_string(event.data) << "</data_hex>\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "      <data_string_first_1024>" << escape_xml_string(utf8_string) << "</data_string_first_1024>\n";
+        }
+        
         out << "      <timestamp>" << event.timestamp << "</timestamp>\n";
         out << "    </input>\n";
     }
@@ -215,6 +236,13 @@ void IOTracker::output_xml_report(std::ostream& out) const {
         out << "</type>\n";
         out << "      <destination>" << escape_xml_string(event.destination) << "</destination>\n";
         out << "      <data_hex>" << data_to_hex_string(event.data) << "</data_hex>\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "      <data_string_first_1024>" << escape_xml_string(utf8_string) << "</data_string_first_1024>\n";
+        }
+        
         out << "      <timestamp>" << event.timestamp << "</timestamp>\n";
         out << "    </output>\n";
     }
@@ -242,6 +270,13 @@ void IOTracker::output_text_report(std::ostream& out) const {
         out << "\n";
         out << "Source: " << event.source << "\n";
         out << "Data: " << data_to_hex_string(event.data) << "\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "Data (UTF-8): " << utf8_string << "\n";
+        }
+        
         out << "Timestamp: " << event.timestamp << "\n\n";
     }
     
@@ -260,6 +295,13 @@ void IOTracker::output_text_report(std::ostream& out) const {
         out << "\n";
         out << "Destination: " << event.destination << "\n";
         out << "Data: " << data_to_hex_string(event.data) << "\n";
+        
+        // Try to decode as UTF-8 string
+        std::string utf8_string = data_to_utf8_string(event.data);
+        if (!utf8_string.empty()) {
+            out << "Data (UTF-8): " << utf8_string << "\n";
+        }
+        
         out << "Timestamp: " << event.timestamp << "\n\n";
     }
 }
@@ -301,4 +343,64 @@ std::string IOTracker::data_to_hex_string(const std::vector<uint8_t>& data) cons
         ss << std::setw(2) << static_cast<int>(byte);
     }
     return ss.str();
+}
+
+std::string IOTracker::data_to_utf8_string(const std::vector<uint8_t>& data, size_t max_length) const {
+    if (data.empty()) {
+        return "";
+    }
+    
+    try {
+        // Attempt to decode as UTF-8
+        std::string result;
+        result.reserve(std::min(data.size(), max_length));
+        
+        for (size_t i = 0; i < data.size() && result.length() < max_length; ++i) {
+            uint8_t byte = data[i];
+            
+            // Simple UTF-8 validation and decoding
+            if (byte <= 0x7F) {
+                // ASCII character (0xxxxxxx)
+                result += static_cast<char>(byte);
+            } else if ((byte & 0xE0) == 0xC0) {
+                // 2-byte sequence (110xxxxx 10xxxxxx)
+                if (i + 1 < data.size() && (data[i + 1] & 0xC0) == 0x80) {
+                    result += static_cast<char>(byte);
+                    result += static_cast<char>(data[++i]);
+                } else {
+                    return ""; // Invalid UTF-8 sequence
+                }
+            } else if ((byte & 0xF0) == 0xE0) {
+                // 3-byte sequence (1110xxxx 10xxxxxx 10xxxxxx)
+                if (i + 2 < data.size() && 
+                    (data[i + 1] & 0xC0) == 0x80 && 
+                    (data[i + 2] & 0xC0) == 0x80) {
+                    result += static_cast<char>(byte);
+                    result += static_cast<char>(data[++i]);
+                    result += static_cast<char>(data[++i]);
+                } else {
+                    return ""; // Invalid UTF-8 sequence
+                }
+            } else if ((byte & 0xF8) == 0xF0) {
+                // 4-byte sequence (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
+                if (i + 3 < data.size() && 
+                    (data[i + 1] & 0xC0) == 0x80 && 
+                    (data[i + 2] & 0xC0) == 0x80 && 
+                    (data[i + 3] & 0xC0) == 0x80) {
+                    result += static_cast<char>(byte);
+                    result += static_cast<char>(data[++i]);
+                    result += static_cast<char>(data[++i]);
+                    result += static_cast<char>(data[++i]);
+                } else {
+                    return ""; // Invalid UTF-8 sequence
+                }
+            } else {
+                return ""; // Invalid UTF-8 start byte
+            }
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        return ""; // Failed to decode as UTF-8
+    }
 }

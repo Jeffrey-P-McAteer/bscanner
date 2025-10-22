@@ -63,4 +63,5 @@ private:
     std::string escape_json_string(const std::string& str) const;
     std::string escape_xml_string(const std::string& str) const;
     std::string data_to_hex_string(const std::vector<uint8_t>& data) const;
+    std::string data_to_utf8_string(const std::vector<uint8_t>& data, size_t max_length = 1024) const;
 };
